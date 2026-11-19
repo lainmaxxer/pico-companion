@@ -18,7 +18,7 @@ from firmware_ui import FirmwareUpdates
 from iidx_screens import IidxScreens, parse_cfg, parse_hall
 from serial_link import Device, Serial, find_ports
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 PROMPT_RE = re.compile(r"(\w+_pico)>\s*$")
 DANGEROUS = ("update", "factory")
 

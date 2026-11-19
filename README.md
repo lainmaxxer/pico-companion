@@ -47,6 +47,22 @@ Drop a `.uf2` firmware file anywhere in the window (or use **Browse...** on the 
 It also works if the controller is already in update mode (BOOTSEL). Some firmware versions reset the settings to
 defaults, which is what the backup is for. Do not unplug the controller while it runs.
 
+### Check for newer firmware
+
+**Check for updates** (Firmware tab) looks in the controller's original project repository
+(`github.com/whowechina/<project>`) for its published `.uf2`, downloads it and compares the build time inside it with
+the one your controller reports. If it is newer you see the date and the author's latest commit message, and
+**Update now** sends it through the same checks, backup and confirmation as above. Nothing is written without your
+confirmation.
+
+- It needs internet access. Most checks download the file straight from the repository and use no GitHub API request
+  at all; the few that do (an unusual file name, or fetching the author's commit message when something newer exists)
+  fall under GitHub's limit of 60 anonymous API requests an hour per network.
+- Projects that publish no ready-made firmware (currently `arcade_pico` and `densha_pico`) are reported as such.
+- A controller running a newer or custom build than the published one (for example the patched IIDX firmware) is
+  reported as "nothing newer". For IIDX the app also warns that the published firmware lacks the configuration
+  commands this app uses, and that newer IIDX firmware may need a Pico W.
+
 Notes:
 - Only one program can use a serial port at a time. Close the web configurator or any serial terminal that is connected
   to the same controller.
@@ -79,10 +95,12 @@ The result is `dist/PicoCompanion.exe`.
 | `serial_link.py` | Serial connection to the controller's CLI (Win32 COM port, no pyserial) |
 | `iidx_screens.py` | IIDX Pico screens and the Hall-key screen shared by Hall-effect controllers |
 | `firmware_update.py` | UF2 validation, update-drive detection, the flash sequence and settings backups |
+| `firmware_check.py` | Finds the published firmware in the original project repository and compares versions |
 | `firmware_ui.py`, `filedrop.py` | The Firmware tab and the drag-and-drop hook (Windows API through ctypes) |
 | `theme.py`, `shapes.py` | Look and feel (light/dark, anti-aliased rounded shapes without Pillow) |
 | `tests/test_profiles.py` | Runs every profile against sample `display` output |
 | `tests/test_firmware_update.py` | Tests UF2 checks and the flash sequence with a simulated update drive |
+| `tests/test_firmware_check.py` | Tests the update check with fake GitHub answers (no network) |
 | `firmware/` | Patch that adds configuration commands to the IIDX Pico firmware |
 
 ## License

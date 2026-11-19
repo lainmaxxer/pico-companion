@@ -10,6 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 import filedrop
+import firmware_check
 import firmware_update as fw
 import theme
 
@@ -21,6 +22,7 @@ class FirmwareUpdates:
         self._fw_log = []
         self._fw_text = None
         self._fw_busy = False
+        self._fw_checking = False
         self._fw_target = None          # (prompt name, port) of the controller being flashed, to reconnect to it
         self._fw_tries = 0
         self._fw_expect_build = False
@@ -56,7 +58,9 @@ class FirmwareUpdates:
         row = ttk.Frame(f)
         row.pack(anchor="w", pady=10)
         theme.Button(row, text="Browse...", command=self.browse_firmware, kind="primary").pack(side="left")
-        theme.Button(row, text="Open backups folder", command=self.open_backups).pack(side="left", padx=8)
+        theme.Button(row, text="Check for updates", command=self.check_firmware_updates,
+                     kind="primary").pack(side="left", padx=8)
+        theme.Button(row, text="Open backups folder", command=self.open_backups).pack(side="left")
 
         text = tk.Text(f, height=8, font=theme.MONO, bg=theme.CONSOLE_BG, fg=theme.CONSOLE_FG, relief="flat",
                        padx=10, pady=8)
@@ -102,6 +106,75 @@ class FirmwareUpdates:
         if len(uf2) > 1:
             self.fw_log(f"{len(uf2)} files dropped; using the first one.")
         self.flash_firmware(uf2[0])
+
+    # ------------------------------------------------- check for updates ---
+    def check_firmware_updates(self):
+        """Compare the connected controller's firmware with the one in its original project repository."""
+        if self._fw_busy or self._fw_checking:
+            return
+        if self.dev is None:
+            messagebox.showinfo("No controller", "Connect a controller first.")
+            return
+        built = re.search(r"Built: (.+)", "\n".join(self.help))
+        chip = re.search(r"Processor: (RP\d+)", self.disp_text)
+        prof, built_text = self.prof, built.group(1) if built else ""
+        chip_name = chip.group(1) if chip else "RP2040"
+        self._fw_checking = True
+        self.fw_log(f"Checking github.com/whowechina/{prof} for newer firmware ...")
+        def work():
+            try:
+                return firmware_check.check_for_update(prof, built_text, chip_name)
+            except Exception as e:      # never leave the button stuck on an unexpected error
+                return firmware_check.UpdateResult("error", f"Unexpected error: {e}")
+        self.run_bg(work, lambda r: self._update_check_done(prof, r))
+
+    def _update_check_done(self, prof, r):
+        self._fw_checking = False
+        if r is None:
+            return
+
+        def fmt(t):
+            return t.strftime("%b %d %Y %H:%M") if t else "unknown"
+
+        if r.status == "error":
+            self.fw_log(f"Update check failed: {r.message}")
+            messagebox.showerror("Update check failed", r.message)
+        elif r.status == "no_firmware":
+            self.fw_log(r.message)
+            messagebox.showinfo("No published firmware", r.message)
+        elif r.status == "current":
+            self.fw_log(f"{prof} is up to date (built {fmt(r.device_build)}).")
+            messagebox.showinfo("Up to date", f"{prof} already has the published firmware "
+                                              f"(built {fmt(r.device_build)}).")
+        elif r.status == "older":
+            self.fw_log(f"{prof} has a newer or custom build ({fmt(r.device_build)}); published: "
+                        f"{fmt(r.repo_build)}.")
+            messagebox.showinfo("Nothing newer", f"Your controller is running a build from {fmt(r.device_build)}, "
+                                                 f"which is newer than the published one ({fmt(r.repo_build)}). "
+                                                 "It may be a custom build.")
+        else:   # newer, or unknown (cannot compare): let the user decide
+            newer = r.status == "newer"
+            self.fw_log(f"{'Newer firmware' if newer else 'Firmware'} published for {prof}: {r.name} "
+                        f"(built {fmt(r.repo_build)}); yours is built {fmt(r.device_build)}.")
+            notes = []
+            if prof == "iidx_pico":
+                if getattr(self, "full", False):
+                    notes.append("Your IIDX runs a patched build with the extra configuration commands this app "
+                                 "uses. The published firmware does not have them, so afterwards the app will "
+                                 "only offer limited settings.")
+                notes.append("Newer IIDX firmware may need a Raspberry Pi Pico W. If your board is a plain Pico, "
+                             "check the project page first.")
+            head = ("Newer firmware is available" if newer else
+                    "Published firmware found (cannot tell whether it is newer)")
+            text = f"{head} for {prof}.\n\nPublished: {r.name}, built {fmt(r.repo_build)}\n"
+            text += f"Yours: built {fmt(r.device_build)}\n"
+            if r.commit_message:
+                text += f"Latest change ({r.commit_date}): {r.commit_message}\n"
+            if notes:
+                text += "\n" + "\n\n".join(notes) + "\n"
+            text += "\nUpdate now? You will be asked to confirm again before anything is written."
+            if messagebox.askyesno("Firmware update available", text, icon="warning" if notes else "question"):
+                self.flash_firmware(r.file)
 
     # ------------------------------------------------------------- flash ---
     def _settings_backup_text(self):

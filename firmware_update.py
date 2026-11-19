@@ -34,6 +34,15 @@ class Uf2Info:
     prompts: list = field(default_factory=list)   # controllers this firmware is for, e.g. ["musec_pico"]
 
 
+def uf2_payload(data):
+    """The firmware bytes carried by the blocks of a (valid) UF2 image."""
+    out = bytearray()
+    for off in range(0, len(data) - len(data) % 512, 512):
+        (nbytes,) = struct.unpack_from("<I", data, off + 16)
+        out += data[off + 32: off + 32 + min(nbytes, 476)]
+    return bytes(out)
+
+
 def check_uf2(path):
     """Validate a UF2 file. Never raises; returns Uf2Info(ok=False, error=...) for anything unusable."""
     try:
