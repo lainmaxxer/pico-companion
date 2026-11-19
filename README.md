@@ -7,6 +7,10 @@ It talks to the controller's built-in command-line interface over its USB serial
 projects' web configurators and `?` / `display` / `save` commands use), so no drivers and no extra installs are needed.
 Windows only, no Python required when you use the release `.exe`.
 
+<p align="center">
+  <img src="docs/screenshot-light.png" alt="Pico Companion in light mode, showing a Musec Pico" width="48%">
+  <img src="docs/screenshot-dark.png" alt="Pico Companion in dark mode, showing a Musec Pico" width="48%">
+</p>
 <p align="center"><i>Light and dark mode, remembered between starts.</i></p>
 
 ## Supported devices
