@@ -1,2 +1,2 @@
 # pico-companion
-A small companion app for https://github.com/whowechina controllers
+A small companion app for [whowechina](https://github.com/whowechina) controllers
