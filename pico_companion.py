@@ -6,7 +6,9 @@ Supported: IIDX Pico (full with the extended firmware, limited on stock),
 Musec Pico (stock firmware). Any other *_pico device gets a generic screen
 (LED level + raw console).
 """
+import os
 import re
+import sys
 import threading
 import time
 import tkinter as tk
@@ -21,6 +23,12 @@ from serial_link import Device, Serial, find_ports
 __version__ = "1.2.0"
 PROMPT_RE = re.compile(r"(\w+_pico)>\s*$")
 DANGEROUS = ("update", "factory")
+
+
+def resource_path(relative):
+    """Path of a bundled file, both when run from source and from the PyInstaller exe."""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, relative)
 
 
 def probe(port):
@@ -72,7 +80,11 @@ class PicoApp(tk.Tk, IidxScreens, FirmwareUpdates):
         self.title(f"Pico Companion {__version__}")
         self.geometry("980x720")
         self.minsize(820, 560)
-        theme.load_mode()          # restores light/dark from the last run
+        try:       # title bar and taskbar icon; the app works without it
+            self.iconbitmap(default=resource_path(os.path.join("assets", "icon.ico")))
+        except tk.TclError:
+            pass
+        theme.load_mode()         # restores light/dark from the last run
         theme.setup(self)
         self.dev = None
         self.cfg = None

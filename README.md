@@ -1,4 +1,4 @@
-# pico-companion
+# <img src="assets/icon.png" alt="" width="40" align="top"> pico-companion
 
 A small desktop companion app for [whowechina](https://github.com/whowechina)'s "pico" arcade-style controllers.
 Change a controller's saved settings from your PC instead of using the buttons on the device.
@@ -84,7 +84,8 @@ pip install pyinstaller
 ./build.ps1
 ```
 
-The result is `dist/PicoCompanion.exe`.
+The result is `dist/PicoCompanion.exe`. The icon is `assets/icon.ico`, drawn by `python tools/make_icon.py` (no
+extra packages needed).
 
 ## Files
 
