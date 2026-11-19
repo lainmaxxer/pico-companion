@@ -1,0 +1,225 @@
+diff --git a/firmware/src/commands.c b/firmware/src/commands.c
+index e2990f0..4899411 100644
+--- a/firmware/src/commands.c
++++ b/firmware/src/commands.c
+@@ -179,8 +179,220 @@ static void handle_stat(int argc, char *argv[])
+     button_clear_stat();
+ }
+ 
++/* ---- Companion app support: "cfg" dump and "set"/"pset"/"color" setters ---- */
++
++typedef struct {
++    const char *name;
++    int max;
++} cfg_field_t;
++
++static const cfg_field_t global_fields[] = {
++    { "konami", 1 }, { "rgb_main", 1 }, { "rgb_tt", 1 }, { "rgb_fx", 1 },
++    { "tt_start", 8 }, { "tt_num", 128 }, { "tt_rev", 1 },
++    { "ppr", 7 }, { "sensor_rev", 1 }, { "binary", 1 },
++};
++
++static const cfg_field_t profile_fields[] = {
++    { "lvl_keys", 255 }, { "lvl_tt", 255 }, { "style", 3 }, { "param", 255 }, { "lmode", 3 },
++};
++
++static int global_get(int id)
++{
++    switch (id) {
++        case 0: return iidx_cfg->hid.konami;
++        case 1: return iidx_cfg->rgb.format.main;
++        case 2: return iidx_cfg->rgb.format.tt;
++        case 3: return iidx_cfg->rgb.format.effect;
++        case 4: return iidx_cfg->rgb.tt.start;
++        case 5: return iidx_cfg->rgb.tt.num;
++        case 6: return iidx_cfg->rgb.tt.reversed;
++        case 7: return iidx_cfg->sensor.ppr;
++        case 8: return iidx_cfg->sensor.reversed;
++        case 9: return iidx_cfg->sensor.binary;
++    }
++    return 0;
++}
++
++static void global_put(int id, int v)
++{
++    switch (id) {
++        case 0: iidx_cfg->hid.konami = v; break;
++        case 1: iidx_cfg->rgb.format.main = v; break;
++        case 2: iidx_cfg->rgb.format.tt = v; break;
++        case 3: iidx_cfg->rgb.format.effect = v; break;
++        case 4: iidx_cfg->rgb.tt.start = v; break;
++        case 5: iidx_cfg->rgb.tt.num = v; break;
++        case 6: iidx_cfg->rgb.tt.reversed = v; break;
++        case 7: iidx_cfg->sensor.ppr = v; break;
++        case 8: iidx_cfg->sensor.reversed = v; break;
++        case 9: iidx_cfg->sensor.binary = v; break;
++    }
++}
++
++static int profile_get(int p, int id)
++{
++    switch (id) {
++        case 0: return iidx_cfg->profiles[p].level.keys;
++        case 1: return iidx_cfg->profiles[p].level.tt;
++        case 2: return iidx_cfg->profiles[p].tt_style;
++        case 3: return iidx_cfg->profiles[p].tt_param;
++        case 4: return iidx_cfg->profile_ex[p].key_light_mode;
++    }
++    return 0;
++}
++
++static void profile_put(int p, int id, int v)
++{
++    switch (id) {
++        case 0: iidx_cfg->profiles[p].level.keys = v; break;
++        case 1: iidx_cfg->profiles[p].level.tt = v; break;
++        case 2: iidx_cfg->profiles[p].tt_style = v; break;
++        case 3: iidx_cfg->profiles[p].tt_param = v; break;
++        case 4: iidx_cfg->profile_ex[p].key_light_mode = v; break;
++    }
++}
++
++static void print_colors(const char *tag, int p, const color_t *c)
++{
++    printf("%s %d", tag, p);
++    for (int i = 0; i < 11; i++) {
++        /* colors are always HSV in this firmware */
++        printf(" %d,%d,%d", c[i].hsv.h, c[i].hsv.s, c[i].hsv.v);
++    }
++    printf("\n");
++}
++
++static void handle_cfg()
++{
++    printf("CFG-BEGIN\n");
++    printf("CFG version %d keys %d profile %d\n", iidx_cfg->config_version,
++           hebtn_keynum(), iidx_cfg->profile % 4);
++    for (int i = 0; i < count_of(global_fields); i++) {
++        printf("G %s %d %d\n", global_fields[i].name, global_get(i), global_fields[i].max);
++    }
++    for (int p = 0; p < 4; p++) {
++        for (int i = 0; i < count_of(profile_fields); i++) {
++            printf("P %d %s %d %d\n", p, profile_fields[i].name,
++                   profile_get(p, i), profile_fields[i].max);
++        }
++        print_colors("CON", p, iidx_cfg->profiles[p].key_on);
++        print_colors("COFF", p, iidx_cfg->profiles[p].key_off);
++    }
++    printf("CFG-END\n");
++}
++
++static void handle_set(int argc, char *argv[])
++{
++    if (argc != 2) {
++        printf("Usage: set <name> <value>\n");
++        return;
++    }
++    int v = cli_extract_non_neg_int(argv[1], 0);
++    for (int i = 0; i < count_of(global_fields); i++) {
++        if (strcasecmp(argv[0], global_fields[i].name) != 0) {
++            continue;
++        }
++        if ((v < 0) || (v > global_fields[i].max)) {
++            printf("ERR range\n");
++            return;
++        }
++        if ((i == 5) && ((v < 1) || (iidx_cfg->rgb.tt.start + v > 128))) {
++            printf("ERR range\n");
++            return;
++        }
++        if ((i == 4) && (v + iidx_cfg->rgb.tt.num > 128)) {
++            printf("ERR range\n");
++            return;
++        }
++        global_put(i, v);
++        config_changed();
++        printf("OK\n");
++        return;
++    }
++    printf("ERR unknown\n");
++}
++
++static void handle_pset(int argc, char *argv[])
++{
++    if (argc != 3) {
++        printf("Usage: pset <profile 0-3> <name> <value>\n");
++        return;
++    }
++    int p = cli_extract_non_neg_int(argv[0], 0);
++    int v = cli_extract_non_neg_int(argv[2], 0);
++    if ((p < 0) || (p > 3)) {
++        printf("ERR profile\n");
++        return;
++    }
++    for (int i = 0; i < count_of(profile_fields); i++) {
++        if (strcasecmp(argv[1], profile_fields[i].name) != 0) {
++            continue;
++        }
++        if ((v < 0) || (v > profile_fields[i].max)) {
++            printf("ERR range\n");
++            return;
++        }
++        profile_put(p, i, v);
++        config_changed();
++        printf("OK\n");
++        return;
++    }
++    printf("ERR unknown\n");
++}
++
++static void handle_color(int argc, char *argv[])
++{
++    const char *usage = "Usage: color <profile 0-3> <on|off> <key 0-10|all> <h> <s> <v>\n";
++    if (argc != 6) {
++        printf(usage);
++        return;
++    }
++    int p = cli_extract_non_neg_int(argv[0], 0);
++    bool on = (strncasecmp(argv[1], "on", strlen(argv[1])) == 0);
++    bool off = (strncasecmp(argv[1], "off", strlen(argv[1])) == 0);
++    bool all = (strncasecmp(argv[2], "all", strlen(argv[2])) == 0);
++    int key = cli_extract_non_neg_int(argv[2], 0);
++    int a = cli_extract_non_neg_int(argv[3], 0);
++    int b = cli_extract_non_neg_int(argv[4], 0);
++    int c = cli_extract_non_neg_int(argv[5], 0);
++    if ((p < 0) || (p > 3) || (!on && !off) || (!all && ((key < 0) || (key > 10))) ||
++        (a < 0) || (a > 255) || (b < 0) || (b > 255) ||
++        (c < 0) || (c > 255)) {
++        printf("ERR args\n");
++        return;
++    }
++    color_t *dst = on ? iidx_cfg->profiles[p].key_on : iidx_cfg->profiles[p].key_off;
++    for (int i = 0; i < 11; i++) {
++        if (all || (i == key)) {
++            dst[i].mode = COLOR_MODE_HSV;
++            dst[i].hsv.h = a;
++            dst[i].hsv.s = b;
++            dst[i].hsv.v = c;
++        }
++    }
++    config_changed();
++    printf("OK\n");
++}
++
++static void handle_profile(int argc, char *argv[])
++{
++    int p = (argc == 1) ? cli_extract_non_neg_int(argv[0], 0) : -1;
++    if ((p < 0) || (p > 3)) {
++        printf("Usage: profile <0-3>\n");
++        return;
++    }
++    iidx_cfg->profile = p;
++    config_changed();
++    printf("OK\n");
++}
++
+ void commands_init()
+ {
++    cli_register("cfg", handle_cfg, "Dump full config (for companion app).");
++    cli_register("set", handle_set, "Set a global option.");
++    cli_register("pset", handle_pset, "Set a per-profile option.");
++    cli_register("color", handle_color, "Set key on/off color.");
++    cli_register("profile", handle_profile, "Select active profile.");
+     cli_register("display", handle_display, "Display current config.");
+     cli_register("calibrate", handle_calibrate, "Calibrate the key sensors.");
+     cli_register("suppress-hall", handle_suppress_hall, "Suppress hall effect button.");
