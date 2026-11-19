@@ -12,12 +12,12 @@ import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-import iidx_companion as ic
 import profiles
 import theme
-from iidx_companion import Device, Serial, find_ports
+from iidx_screens import IidxScreens, parse_cfg, parse_hall
+from serial_link import Device, Serial, find_ports
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 PROMPT_RE = re.compile(r"(\w+_pico)>\s*$")
 DANGEROUS = ("update", "factory")
 
@@ -46,7 +46,7 @@ def probe(port):
 
 def scan(skip=()):
     """Probe every serial port except those in `skip` (ports we already hold open)."""
-    _, ports = find_ports()
+    ports = find_ports()
     found = []
     for p in dict.fromkeys(ports):  # unique, keep order
         if p in skip:
@@ -65,7 +65,7 @@ def kv(lines, pattern, cast=str):
     return None
 
 
-class PicoApp(ic.App):
+class PicoApp(tk.Tk, IidxScreens):
     def __init__(self):
         tk.Tk.__init__(self)
         self.title(f"Pico Companion {__version__}")
@@ -225,7 +225,7 @@ class PicoApp(ic.App):
     def _watch_ports(self):
         """Rescan automatically when a serial port appears or disappears (plug / unplug)."""
         try:
-            ports = frozenset(find_ports()[1])
+            ports = frozenset(find_ports())
             if self._snapshot is not None and ports != self._snapshot and not getattr(self, "_scanning", False):
                 self.rescan()
             self._snapshot = ports
@@ -300,8 +300,8 @@ class PicoApp(ic.App):
             self.disp_text = "\n".join(r["disp"])
             if prof == "iidx_pico":
                 self.full = r["full"]
-                self.cfg = ic.parse_cfg(r["cfg"]) if self.full else None
-                self.hall = ic.parse_hall(r["disp"])
+                self.cfg = parse_cfg(r["cfg"]) if self.full else None
+                self.hall = parse_hall(r["disp"])
             elif prof == "musec_pico":
                 self.spin_usage = r["spin_usage"]
             self.probes = r["probes"]
@@ -315,6 +315,19 @@ class PicoApp(ic.App):
         self.run_bg(job, done)
 
     # -- sending (response check differs from the IIDX-only app)
+    def send(self, cmd, key=None, delay=250):
+        """Debounced send; the latest command per key wins (so sliders don't flood the device)."""
+        key = key or cmd
+        if key in self.pending:
+            self.after_cancel(self.pending[key])
+        self.pending[key] = self.after(delay, lambda: self._fire(key, cmd))
+
+    def scale(self, parent, label, name, val, vmax, cmd, row, vmin=0):
+        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", pady=4)
+        sl = theme.Slider(parent, vmin, vmax, val, cmd)
+        sl.grid(row=row, column=1, columnspan=2, sticky="w", padx=8)
+        return sl
+
     def _fire(self, key, cmd):
         self.pending.pop(key, None)
         if not self.dev:
@@ -334,7 +347,7 @@ class PicoApp(ic.App):
             self.nb.forget(t)
             w.destroy()  # forget() alone leaks the old tab's widgets
         if self.prof == "iidx_pico":
-            ic.App.build_tabs(self)
+            self.build_iidx_tabs()
         elif self.prof == "musec_pico":
             self.tab_musec()
             self.tab_raw()
@@ -343,7 +356,7 @@ class PicoApp(ic.App):
             self.tab_raw()
         elif self.prof in profiles.PROFILES:
             self.tab_declared()
-            self.hall = ic.parse_hall(self.disp)
+            self.hall = parse_hall(self.disp)
             if self.hall:
                 self.tab_hall()
             self.tab_raw()

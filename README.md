@@ -62,7 +62,8 @@ The result is `dist/PicoCompanion.exe`.
 |---|---|
 | `pico_companion.py` | The app (window, device scan, per-device screens for IIDX, Musec, AIC) |
 | `profiles.py` | Table-driven settings for the other devices, written from their firmware |
-| `iidx_companion.py` | Serial layer and the IIDX screens |
+| `serial_link.py` | Serial connection to the controller's CLI (Win32 COM port, no pyserial) |
+| `iidx_screens.py` | IIDX Pico screens and the Hall-key screen shared by Hall-effect controllers |
 | `theme.py`, `shapes.py` | Look and feel (light/dark, anti-aliased rounded shapes without Pillow) |
 | `tests/test_profiles.py` | Runs every profile against sample `display` output |
 | `firmware/` | Patch that adds configuration commands to the IIDX Pico firmware |
