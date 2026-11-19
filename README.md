@@ -33,6 +33,20 @@ from what the device itself reports, so older firmware simply shows fewer option
 3. Change settings. Changes apply immediately and the device writes them to flash after a few seconds
    (or press **Save to flash**).
 
+## Updating firmware
+
+Drop a `.uf2` firmware file anywhere in the window (or use **Browse...** on the **Firmware** tab). The app:
+
+1. checks that it is a valid UF2 for an RP2040/RP2350 and that it is for the connected controller (it warns if the
+   firmware looks like it belongs to a different one),
+2. asks you to confirm and saves your current settings as a text file in a `PicoCompanion\Backups` folder (under Documents, or under `%APPDATA%` if
+   there is no Documents folder; the Firmware tab has an **Open backups folder** button),
+3. reboots the controller into update mode, copies the file to the `RPI-RP2` drive, and waits for the restart,
+4. reconnects and shows the new build date.
+
+It also works if the controller is already in update mode (BOOTSEL). Some firmware versions reset the settings to
+defaults, which is what the backup is for. Do not unplug the controller while it runs.
+
 Notes:
 - Only one program can use a serial port at a time. Close the web configurator or any serial terminal that is connected
   to the same controller.
@@ -64,8 +78,11 @@ The result is `dist/PicoCompanion.exe`.
 | `profiles.py` | Table-driven settings for the other devices, written from their firmware |
 | `serial_link.py` | Serial connection to the controller's CLI (Win32 COM port, no pyserial) |
 | `iidx_screens.py` | IIDX Pico screens and the Hall-key screen shared by Hall-effect controllers |
+| `firmware_update.py` | UF2 validation, update-drive detection, the flash sequence and settings backups |
+| `firmware_ui.py`, `filedrop.py` | The Firmware tab and the drag-and-drop hook (Windows API through ctypes) |
 | `theme.py`, `shapes.py` | Look and feel (light/dark, anti-aliased rounded shapes without Pillow) |
 | `tests/test_profiles.py` | Runs every profile against sample `display` output |
+| `tests/test_firmware_update.py` | Tests UF2 checks and the flash sequence with a simulated update drive |
 | `firmware/` | Patch that adds configuration commands to the IIDX Pico firmware |
 
 ## License

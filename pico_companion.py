@@ -14,10 +14,11 @@ from tkinter import messagebox, ttk
 
 import profiles
 import theme
+from firmware_ui import FirmwareUpdates
 from iidx_screens import IidxScreens, parse_cfg, parse_hall
 from serial_link import Device, Serial, find_ports
 
-__version__ = "1.0.1"
+__version__ = "1.1.0"
 PROMPT_RE = re.compile(r"(\w+_pico)>\s*$")
 DANGEROUS = ("update", "factory")
 
@@ -65,7 +66,7 @@ def kv(lines, pattern, cast=str):
     return None
 
 
-class PicoApp(tk.Tk, IidxScreens):
+class PicoApp(tk.Tk, IidxScreens, FirmwareUpdates):
     def __init__(self):
         tk.Tk.__init__(self)
         self.title(f"Pico Companion {__version__}")
@@ -85,6 +86,7 @@ class PicoApp(tk.Tk, IidxScreens):
         self.status = tk.StringVar(value="Scanning...")
         self._auto_done = False
         self._build_ui()
+        self.init_firmware_updates()
         self.after(100, self.rescan)
         self._snapshot = None
         self.after(2000, self._watch_ports)
@@ -234,6 +236,8 @@ class PicoApp(tk.Tk, IidxScreens):
         self.after(2000, self._watch_ports)
 
     def rescan(self):
+        if self._fw_busy:      # never probe or reconnect while firmware is being written
+            return
         self.status.set("Scanning serial ports...")
         self._scanning = True
         held = self.dev_port
@@ -250,11 +254,19 @@ class PicoApp(tk.Tk, IidxScreens):
                 keep = [i for i, d in enumerate(found) if d[1] == held] if skip else []
                 self.port_box.current(keep[0] if keep else 0)
                 self.status.set(f"Found {len(labels)} device(s)")
-                if self.dev is None and not self._auto_done:
+                back = self.fw_reconnect_index(found)
+                if back is not None and self.dev is None:       # the controller we just flashed is back
+                    self._fw_target = None
+                    self.port_box.current(back)
+                    self.connect()
+                elif self._fw_target and self.dev is None and self.fw_wait_for_return():
+                    pass
+                elif self.dev is None and not self._auto_done:
                     self._auto_done = True
                     self.connect()
             else:
-                self.status.set("No pico controller found - plug one in")
+                if not self.fw_wait_for_return():
+                    self.status.set("No pico controller found - plug one in")
         self.run_bg(lambda: scan(skip), done)
 
     def connect(self):
@@ -296,6 +308,7 @@ class PicoApp(tk.Tk, IidxScreens):
 
         def done(r):
             self.help = r["help"]
+            self.cfg_raw = r.get("cfg")
             self.disp = r["disp"]
             self.disp_text = "\n".join(r["disp"])
             if prof == "iidx_pico":
@@ -312,6 +325,7 @@ class PicoApp(tk.Tk, IidxScreens):
             if prof == "iidx_pico" and not self.full:
                 extra = " - stock firmware: limited settings"
             self.status.set(f"{prof} SN {sn}, built {built}{extra}")
+            self.fw_after_load(prof, built)
         self.run_bg(job, done)
 
     # -- sending (response check differs from the IIDX-only app)
@@ -527,6 +541,7 @@ class PicoApp(tk.Tk, IidxScreens):
                             ).grid(row=0, column=c, padx=10)
 
     def tab_raw(self):
+        self.tab_firmware()      # every device gets the Firmware tab just before the console tab
         f = ttk.Frame(self.nb, padding=8)
         self.nb.add(f, text="Device / CLI")
         t = tk.Text(f, height=14, font=theme.MONO, bg=theme.CONSOLE_BG, fg=theme.CONSOLE_FG, insertbackground="#ffffff", relief="flat", padx=10, pady=8)
